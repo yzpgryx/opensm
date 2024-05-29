@@ -5,9 +5,12 @@ import (
 	"opensm/src/sm2"
 )
 
-func TestSM2P256(t *testing.T) {
-	sm2p256 := sm2.SM2P256()
-	sm2p256.Params()
-
-	t.Logf("hehe")
+func TestGenerateKeySM2P256(t *testing.T) {
+	pkey := sm2.GenerateKeySM2P256(nil)
+	if pkey != nil {
+		t.Logf("generete sm2 keypair success!")
+	} else {
+		t.Errorf("generete sm2 keypair failed!")
+	}
 }
+
