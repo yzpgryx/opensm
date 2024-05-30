@@ -1,19 +1,19 @@
 package sm2
 
 import (
-	"io"
-	"fmt"
-	"sync"
 	"crypto/elliptic"
-	"math/big"
 	"crypto/rand"
+	"fmt"
+	"io"
+	"math/big"
+	"sync"
 )
 
 var initonce sync.Once
 var sm2p256 SM2P256Curve
 
 type SM2P256Curve struct {
-	A *big.Int
+	A      *big.Int
 	params *elliptic.CurveParams
 }
 
@@ -29,13 +29,13 @@ type AffinePoint struct {
 }
 
 type PublicKey struct {
-	elliptic.Curve
+	curve *elliptic.Curve
 	*AffinePoint
 }
 
 type PrivateKey struct {
-	*PublicKey
-	D *big.Int
+	public *PublicKey
+	D      *big.Int
 }
 
 type Signature struct {
@@ -51,24 +51,38 @@ func bigFromHex(s string) *big.Int {
 	return b
 }
 
+func bigFromDec(s string) *big.Int {
+	b, ok := new(big.Int).SetString(s, 10)
+	if !ok {
+		panic("opensm/sm2: internal error: invalid encoding")
+	}
+	return b
+}
+
 func initSM2P256() {
-	sm2p256.params = &elliptic.CurveParams {
-		Name: "SM2-P256",
+	sm2p256.params = &elliptic.CurveParams{
+		Name:    "SM2-P256",
 		BitSize: 256,
-		P: bigFromHex("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF"),
-		N: bigFromHex("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123"),
-		B: bigFromHex("28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93"),
-		Gx: bigFromHex("32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7"),
-		Gy: bigFromHex("BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0"),
+		P:       bigFromHex("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF"),
+		N:       bigFromHex("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123"),
+		B:       bigFromHex("28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93"),
+		Gx:      bigFromHex("32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7"),
+		Gy:      bigFromHex("BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0"),
 	}
 	sm2p256.A = bigFromHex("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC")
 }
 
 func iAffine2Jacobian(point *AffinePoint) *JacobianPoint {
+	Z := 1
+
+	if point.X.Sign() == 0 && point.Y.Sign() == 0 {
+		Z = 0
+	}
+
 	return &JacobianPoint{
 		X: new(big.Int).Set(point.X),
 		Y: new(big.Int).Set(point.Y),
-		Z: big.NewInt(1),
+		Z: big.NewInt(int64(Z)),
 	}
 }
 
@@ -108,12 +122,12 @@ func ModMul(x, y, n *big.Int) *big.Int {
 }
 
 func (curve SM2P256Curve) Add(x1, y1, x2, y2 *big.Int) (x, y *big.Int) {
-	if(curve.params != sm2p256.params) {
+	if curve.params != sm2p256.params {
 		return nil, nil
 	}
 
-	P := iAffine2Jacobian(&AffinePoint{X : x1, Y : y1})
-	Q := iAffine2Jacobian(&AffinePoint{X : x2, Y : y2})
+	P := iAffine2Jacobian(&AffinePoint{X: x1, Y: y1})
+	Q := iAffine2Jacobian(&AffinePoint{X: x2, Y: y2})
 
 	if P.Z.Sign() == 0 {
 		return x2, y2
@@ -168,23 +182,28 @@ func (curve SM2P256Curve) Double(x1, y1 *big.Int) (x, y *big.Int) {
 	}
 
 	xx := ModMul(p.X, p.X, curve.params.P)
-	xxxx := ModMul(xx, xx, curve.params.P)
 	yy := ModMul(p.Y, p.Y, curve.params.P)
 	yyyy := ModMul(yy, yy, curve.params.P)
-	xyy := ModMul(p.X, yy, curve.params.P)
+	zz := ModMul(p.Z, p.Z, curve.params.P)
+	zzzz := ModMul(zz, zz, curve.params.P)
 
-	x3 := ModMul(big.NewInt(9), xxxx, curve.params.P)
-	t := ModMul(big.NewInt(8), xyy, curve.params.P)
-	x3 = ModSub(x3 ,t, curve.params.P)
+	s := ModMul(big.NewInt(4), p.X, curve.params.P)
+	s = ModMul(s, yy, curve.params.P)
 
-	y3 := ModMul(big.NewInt(3), xx, curve.params.P)
-	t = ModMul(big.NewInt(4), xyy, curve.params.P)
-	t = ModSub(t, x3, curve.params.P)
-	y3 = ModMul(y3, t, curve.params.P)
+	m := ModMul(big.NewInt(3), xx, curve.params.P)
+	t := ModMul(curve.A, zzzz, curve.params.P)
+	m = ModAdd(m, t, curve.params.P)
+
+	x3 := ModMul(m, m, curve.params.P)
+	t = ModMul(big.NewInt(2), s, curve.params.P)
+	x3 = ModSub(x3, t, curve.params.P)
+
+	y3 := ModSub(s, x3, curve.params.P)
+	y3 = ModMul(m, y3, curve.params.P)
 	t = ModMul(big.NewInt(8), yyyy, curve.params.P)
 	y3 = ModSub(y3, t, curve.params.P)
 
-	z3 := ModMul(big.NewInt(2), p.Y, curve.params.P)
+	z3 := ModMul(big.NewInt(2), y1, curve.params.P)
 	z3 = ModMul(z3, p.Z, curve.params.P)
 
 	r := iJacobian2Affine(&JacobianPoint{
@@ -234,23 +253,11 @@ func (curve SM2P256Curve) ScalarMult(x1, y1 *big.Int, k []byte) (x, y *big.Int) 
 	r0Y.Mod(r0Y, curve.params.P)
 
 	return r0X, r0Y
-	// R0 := Point{0, 0} // Point at infinity
-    // R1 := P
-    // for i := k.BitLen() - 1; i >= 0; i-- {
-    //     if k.Bit(i) == 0 {
-    //         R1 = R0.Add(R1)
-    //         R0 = R0.Double()
-    //     } else {
-    //         R0 = R0.Add(R1)
-    //         R1 = R1.Double()
-    //     }
-    // }
-    // return R0
 }
 
 func SM2P256() elliptic.Curve {
 	initonce.Do(initAll)
-	return sm2p256;
+	return sm2p256
 }
 
 func GenerateKeySM2P256(random io.Reader) *PrivateKey {
@@ -259,18 +266,18 @@ func GenerateKeySM2P256(random io.Reader) *PrivateKey {
 	}
 
 	// d := bigFromHex("8F09E6F801D47FF182C70A8904F63576135FDD09BD7DC8574C5D4D24F4F236F2")
-	x := bigFromHex("C08C3983284907D86B4A5E8E8718D6FC16DDA37C3D03A92FA423325908EBF998")
-	y := bigFromHex("D0A878C58949FDEB906EE4FDDD32A2D38F42AE56A71A811D30E9EBA0BFE7642C")
+	// x := bigFromHex("C08C3983284907D86B4A5E8E8718D6FC16DDA37C3D03A92FA423325908EBF998")
+	// y := bigFromHex("D0A878C58949FDEB906EE4FDDD32A2D38F42AE56A71A811D30E9EBA0BFE7642C")
 
 	curve := SM2P256()
-	// nMinusTwo := new(big.Int).Sub(curve.Params().P, big.NewInt(2))
-	// d, _ := rand.Int(random, nMinusTwo)
-	// d.Add(d, big.NewInt(1))
+	nMinusTwo := new(big.Int).Sub(curve.Params().P, big.NewInt(2))
+	d, _ := rand.Int(random, nMinusTwo)
+	d.Add(d, big.NewInt(1))
 
-	// fmt.Printf("private key : %x\n", d.Bytes())
+	fmt.Printf("private key : %x\n", d.Bytes())
 
-	// x, y := curve.ScalarBaseMult(d.Bytes())
-	// fmt.Printf("publickey key :\n%x\n%x\n", x.Bytes(), y.Bytes())
+	x, y := curve.ScalarBaseMult(d.Bytes())
+	fmt.Printf("publickey key :\n%x\n%x\n", x.Bytes(), y.Bytes())
 
 	if curve.IsOnCurve(x, y) {
 		fmt.Printf("publickey is on curve!\n")
@@ -278,5 +285,14 @@ func GenerateKeySM2P256(random io.Reader) *PrivateKey {
 		fmt.Printf("publickey is not on curve!\n")
 	}
 
-	return nil
+	return &PrivateKey{
+		public: &PublicKey{
+			AffinePoint: &AffinePoint{
+				X: x,
+				Y: y,
+			},
+			curve: &curve,
+		},
+		D: d,
+	}
 }

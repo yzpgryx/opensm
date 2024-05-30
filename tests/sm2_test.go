@@ -1,8 +1,8 @@
 package main
 
 import (
-	"testing"
 	"opensm/src/sm2"
+	"testing"
 )
 
 func TestGenerateKeySM2P256(t *testing.T) {
@@ -13,4 +13,3 @@ func TestGenerateKeySM2P256(t *testing.T) {
 		t.Errorf("generete sm2 keypair failed!")
 	}
 }
-
