@@ -267,7 +267,7 @@ func SM2P256() elliptic.Curve {
 	return sm2p256
 }
 
-func GenerateKeySM2P256(random io.Reader) *PrivateKey {
+func GenerateKeySM2P256(random io.Reader) (*PrivateKey, error) {
 	if random == nil {
 		random = rand.Reader
 	}
@@ -286,11 +286,8 @@ func GenerateKeySM2P256(random io.Reader) *PrivateKey {
 	x, y := curve.ScalarBaseMult(d.Bytes())
 	fmt.Printf("publickey key :\n%x\n%x\n", x.Bytes(), y.Bytes())
 
-	if curve.IsOnCurve(x, y) {
-		fmt.Printf("publickey is on curve!\n")
-	} else {
-		fmt.Printf("publickey is not on curve!\n")
-		return nil
+	if !curve.IsOnCurve(x, y) {
+		return nil, fmt.Errorf("publickey is not on curve\n")
 	}
 
 	return &PrivateKey{
@@ -302,5 +299,42 @@ func GenerateKeySM2P256(random io.Reader) *PrivateKey {
 			curve: &curve,
 		},
 		D: d,
+	}, nil
+}
+
+func Sign(random io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err error) {
+	if random == nil {
+		random = rand.Reader
 	}
+
+	if priv == nil || hash == nil {
+		return nil, nil, fmt.Errorf("invalid args\n")
+	}
+
+	curve := SM2P256()
+	nMinusOne := new(big.Int).Sub(curve.Params().P, big.NewInt(1))
+
+randk:
+	k, _ := rand.Int(random, nMinusOne)
+	k.Add(k, big.NewInt(1))
+
+	m := new(big.Int).SetBytes(hash)
+	x, _ := curve.ScalarBaseMult(k.Bytes())
+	r = ModAdd(m, x, curve.Params().N)
+
+	t := ModAdd(r, k, curve.Params().N)
+	if r.Sign() == 0 || t.Sign() == 0 {
+		goto randk;
+	}
+
+	s = ModAdd(big.NewInt(1), priv.D, curve.Params().N)
+	s.ModInverse(s, curve.Params().N)
+	t = ModMul(r, priv.D, curve.Params().N)
+	t = ModSub(k, t, curve.Params().N)
+	s = ModMul(s, t, curve.Params().N)
+	if s.Sign() == 0 {
+		goto randk;
+	}
+
+	return r, s, nil
 }
