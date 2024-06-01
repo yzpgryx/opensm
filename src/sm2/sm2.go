@@ -86,12 +86,12 @@ func iAffine2Jacobian(point *AffinePoint) *JacobianPoint {
 	}
 }
 
-func iJacobian2Affine(point *JacobianPoint, p *big.Int) *AffinePoint {
-	zInv := new(big.Int).ModInverse(point.Z, p)
+func iJacobian2Affine(point *JacobianPoint, prime *big.Int) *AffinePoint {
+	zInv := new(big.Int).ModInverse(point.Z, prime)
 	zInv2 := new(big.Int).Mul(zInv, zInv)
 	zInv3 := new(big.Int).Mul(zInv2, zInv)
-	x := new(big.Int).Mod(new(big.Int).Mul(point.X, zInv2), p)
-	y := new(big.Int).Mod(new(big.Int).Mul(point.Y, zInv3), p)
+	x := new(big.Int).Mod(new(big.Int).Mul(point.X, zInv2), prime)
+	y := new(big.Int).Mod(new(big.Int).Mul(point.Y, zInv3), prime)
 	return &AffinePoint{
 		X: x,
 		Y: y,
@@ -126,25 +126,81 @@ func (curve SM2P256Curve) Add(x1, y1, x2, y2 *big.Int) (x, y *big.Int) {
 		return nil, nil
 	}
 
-	P := iAffine2Jacobian(&AffinePoint{X: x1, Y: y1})
-	Q := iAffine2Jacobian(&AffinePoint{X: x2, Y: y2})
+	p := iAffine2Jacobian(&AffinePoint{X: x1, Y: y1})
+	q := iAffine2Jacobian(&AffinePoint{X: x2, Y: y2})
 
-	if P.Z.Sign() == 0 {
-		return x2, y2
+	r := iJacobian2Affine(JacoianPointAdd(curve, p, q), curve.params.P)
+
+	return r.X, r.Y
+}
+
+func (curve SM2P256Curve) Double(x1, y1 *big.Int) (x, y *big.Int) {
+	p := iAffine2Jacobian(&AffinePoint{
+		X: x1,
+		Y: y1,
+	})
+
+	r := iJacobian2Affine(JacoianPointDouble(curve, p), curve.params.P)
+
+	return r.X, r.Y
+}
+
+func (curve SM2P256Curve) IsOnCurve(x, y *big.Int) bool {
+	yy := ModMul(y, y, curve.params.P)
+
+	xx := ModMul(x, x, curve.params.P)
+	xxx := ModMul(xx, x, curve.params.P)
+
+	ax := ModMul(curve.A, x, curve.params.P)
+
+	right := ModAdd(xxx, ax, curve.params.P)
+	right = ModAdd(right, curve.params.B, curve.params.P)
+
+	return right.Cmp(yy) == 0
+}
+
+func (curve SM2P256Curve) ScalarBaseMult(k []byte) (x, y *big.Int) {
+	return curve.ScalarMult(curve.params.Gx, curve.params.Gy, k)
+}
+
+func (curve SM2P256Curve) ScalarMult(x1, y1 *big.Int, k []byte) (x, y *big.Int) {
+	r0 := iAffine2Jacobian(&AffinePoint{X : big.NewInt(0),Y : big.NewInt(0)})
+	r1 := iAffine2Jacobian(&AffinePoint{X : x1, Y : y1})
+
+	K := new(big.Int).SetBytes(k)
+
+	for i := K.BitLen() - 1; i >= 0; i-- {
+		if K.Bit(i) == 0 {
+			r1 = JacoianPointAdd(curve, r0, r1)
+			r0 = JacoianPointDouble(curve, r0)
+		} else {
+			r0 = JacoianPointAdd(curve, r0, r1)
+			r1 = JacoianPointDouble(curve, r1)
+		}
 	}
-	if Q.Z.Sign() == 0 {
-		return x1, y1
+
+	r := iJacobian2Affine(r0, curve.params.P)
+
+	return r.X, r.Y
+}
+
+func JacoianPointAdd(curve SM2P256Curve, p *JacobianPoint, q *JacobianPoint) *JacobianPoint {
+	if p.Z.Sign() == 0 {
+		return q
+	}
+	if q.Z.Sign() == 0 {
+		return p
 	}
 
-	zz1 := ModMul(P.Z, P.Z, curve.params.P)
-	zz2 := ModMul(Q.Z, Q.Z, curve.params.P)
-	zzz2 := ModMul(zz2, Q.Z, curve.params.P)
-	zzz1 := ModMul(zz1, P.Z, curve.params.P)
+	zz1 := ModMul(p.Z, p.Z, curve.params.P)
+	zz2 := ModMul(q.Z, q.Z, curve.params.P)
+	zzz2 := ModMul(zz2, q.Z, curve.params.P)
+	zzz1 := ModMul(zz1, p.Z, curve.params.P)
 
-	u1 := ModMul(P.X, zz2, curve.params.P)
-	u2 := ModMul(Q.X, zz1, curve.params.P)
-	s1 := ModMul(P.Y, zzz2, curve.params.P)
-	s2 := ModMul(Q.Y, zzz1, curve.params.P)
+	u1 := ModMul(p.X, zz2, curve.params.P)
+	u2 := ModMul(q.X, zz1, curve.params.P)
+	s1 := ModMul(p.Y, zzz2, curve.params.P)
+	s2 := ModMul(q.Y, zzz1, curve.params.P)
 	h := ModSub(u2, u1, curve.params.P)
 	r := ModSub(s2, s1, curve.params.P)
 	rr := ModMul(r, r, curve.params.P)
@@ -159,26 +215,19 @@ func (curve SM2P256Curve) Add(x1, y1, x2, y2 *big.Int) (x, y *big.Int) {
 	y3 = ModMul(y3, r, curve.params.P)
 	y3 = ModSub(y3, ModMul(s1, hhh, curve.params.P), curve.params.P)
 
-	z3 := ModMul(P.Z, Q.Z, curve.params.P)
+	z3 := ModMul(p.Z, q.Z, curve.params.P)
 	z3 = ModMul(z3, h, curve.params.P)
 
-	R := iJacobian2Affine(&JacobianPoint{
+	return &JacobianPoint{
 		X: x3,
 		Y: y3,
 		Z: z3,
-	}, curve.params.P)
-
-	return R.X, R.Y
+	}
 }
 
-func (curve SM2P256Curve) Double(x1, y1 *big.Int) (x, y *big.Int) {
-	p := iAffine2Jacobian(&AffinePoint{
-		X: x1,
-		Y: y1,
-	})
-
+func JacoianPointDouble(curve SM2P256Curve, p *JacobianPoint) *JacobianPoint {
 	if p.Z.Sign() == 0 {
-		return x1, y1
+		return p
 	}
 
 	xx := ModMul(p.X, p.X, curve.params.P)
@@ -203,56 +252,14 @@ func (curve SM2P256Curve) Double(x1, y1 *big.Int) (x, y *big.Int) {
 	t = ModMul(big.NewInt(8), yyyy, curve.params.P)
 	y3 = ModSub(y3, t, curve.params.P)
 
-	z3 := ModMul(big.NewInt(2), y1, curve.params.P)
+	z3 := ModMul(big.NewInt(2), p.Y, curve.params.P)
 	z3 = ModMul(z3, p.Z, curve.params.P)
 
-	r := iJacobian2Affine(&JacobianPoint{
+	return &JacobianPoint{
 		X: x3,
 		Y: y3,
 		Z: z3,
-	}, curve.params.P)
-
-	return r.X, r.Y
-}
-
-func (curve SM2P256Curve) IsOnCurve(x, y *big.Int) bool {
-	yy := ModMul(y, y, curve.params.P)
-
-	xx := ModMul(x, x, curve.params.P)
-	xxx := ModMul(xx, x, curve.params.P)
-
-	ax := ModMul(curve.A, x, curve.params.P)
-
-	right := ModAdd(xxx, ax, curve.params.P)
-	right = ModAdd(right, curve.params.B, curve.params.P)
-
-	return right.Cmp(yy) == 0
-}
-
-func (curve SM2P256Curve) ScalarBaseMult(k []byte) (x, y *big.Int) {
-	return curve.ScalarMult(curve.params.Gx, curve.params.Gy, k)
-}
-
-func (curve SM2P256Curve) ScalarMult(x1, y1 *big.Int, k []byte) (x, y *big.Int) {
-	r0X, r0Y := big.NewInt(0), big.NewInt(0)
-	r1X, r1Y := x1, y1
-
-	K := new(big.Int).SetBytes(k)
-
-	for i := K.BitLen() - 1; i >= 0; i-- {
-		if K.Bit(i) == 0 {
-			r1X, r1Y = curve.Add(r0X, r0Y, r1X, r1Y)
-			r0X, r0Y = curve.Double(r0X, r0Y)
-		} else {
-			r0X, r0Y = curve.Add(r0X, r0Y, r1X, r1Y)
-			r1X, r1Y = curve.Double(r1X, r1Y)
-		}
 	}
-
-	r0X.Mod(r0X, curve.params.P)
-	r0Y.Mod(r0Y, curve.params.P)
-
-	return r0X, r0Y
 }
 
 func SM2P256() elliptic.Curve {
@@ -283,6 +290,7 @@ func GenerateKeySM2P256(random io.Reader) *PrivateKey {
 		fmt.Printf("publickey is on curve!\n")
 	} else {
 		fmt.Printf("publickey is not on curve!\n")
+		return nil
 	}
 
 	return &PrivateKey{
