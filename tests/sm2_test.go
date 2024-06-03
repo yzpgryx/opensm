@@ -1,9 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"opensm/src/sm2"
 	"testing"
-	"crypto/rand"
 )
 
 func TestGenerateKeySM2P256(t *testing.T) {
@@ -29,10 +29,18 @@ func TestSign(t *testing.T) {
 		t.Errorf("generete sm2 keypair failed!")
 	}
 
+	t.Logf("msg : %x", msg)
 	r, s, err := sm2.Sign(nil, pkey, msg)
 	if err != nil {
 		t.Errorf("sign failed : %s", err)
 	}
 
 	t.Logf("r : %x\ns : %x\n", r, s)
+
+	ret := sm2.Verify(&pkey.PublicKey, msg, r, s)
+	if ret {
+		t.Logf("verify success\n")
+	} else {
+		t.Errorf("verify failed\n")
+	}
 }

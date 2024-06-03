@@ -34,8 +34,8 @@ type PublicKey struct {
 }
 
 type PrivateKey struct {
-	public *PublicKey
-	D      *big.Int
+	PublicKey
+	D *big.Int
 }
 
 type Signature struct {
@@ -164,8 +164,8 @@ func (curve SM2P256Curve) ScalarBaseMult(k []byte) (x, y *big.Int) {
 }
 
 func (curve SM2P256Curve) ScalarMult(x1, y1 *big.Int, k []byte) (x, y *big.Int) {
-	r0 := iAffine2Jacobian(&AffinePoint{X : big.NewInt(0),Y : big.NewInt(0)})
-	r1 := iAffine2Jacobian(&AffinePoint{X : x1, Y : y1})
+	r0 := iAffine2Jacobian(&AffinePoint{X: big.NewInt(0), Y: big.NewInt(0)})
+	r1 := iAffine2Jacobian(&AffinePoint{X: x1, Y: y1})
 
 	K := new(big.Int).SetBytes(k)
 
@@ -291,12 +291,12 @@ func GenerateKeySM2P256(random io.Reader) (*PrivateKey, error) {
 	}
 
 	return &PrivateKey{
-		public: &PublicKey{
+		PublicKey: PublicKey{
+			curve: &curve,
 			AffinePoint: &AffinePoint{
 				X: x,
 				Y: y,
 			},
-			curve: &curve,
 		},
 		D: d,
 	}, nil
@@ -324,7 +324,7 @@ randk:
 
 	t := ModAdd(r, k, curve.Params().N)
 	if r.Sign() == 0 || t.Sign() == 0 {
-		goto randk;
+		goto randk
 	}
 
 	s = ModAdd(big.NewInt(1), priv.D, curve.Params().N)
@@ -333,8 +333,39 @@ randk:
 	t = ModSub(k, t, curve.Params().N)
 	s = ModMul(s, t, curve.Params().N)
 	if s.Sign() == 0 {
-		goto randk;
+		goto randk
 	}
 
 	return r, s, nil
+}
+
+func Verify(pub *PublicKey, hash []byte, r, s *big.Int) bool {
+	if pub == nil || hash == nil || r == nil || s == nil {
+		return false
+	}
+
+	curve := SM2P256()
+
+	if r.Sign() != 1 || r.Cmp(curve.Params().N) != -1 || s.Sign() != 1 || s.Cmp(curve.Params().N) != -1 {
+		return false
+	}
+
+	t := ModAdd(r, s, curve.Params().N)
+	if t.Sign() == 0 {
+		return false
+	}
+
+	x2, y2 := curve.ScalarBaseMult(s.Bytes())
+	x3, y3 := curve.ScalarMult(pub.X, pub.Y, t.Bytes())
+
+	x1, _ := curve.Add(x2, y2, x3, y3)
+
+	e := new(big.Int).SetBytes(hash)
+	R := ModAdd(e, x1, curve.Params().N)
+
+	if r.Cmp(R) == 0 {
+		return true
+	} else {
+		return false
+	}
 }
