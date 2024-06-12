@@ -9,7 +9,6 @@ const BlockSize = 64
 const Size = 32
 
 type SM3 struct {
-	dgst   []byte
 	length int
 	x      []byte
 	A      uint32
@@ -126,7 +125,6 @@ func (sm3 *SM3) BlockSize() int {
 }
 
 func (sm3 *SM3) Reset() {
-	sm3.dgst = make([]byte, 32)
 	sm3.length = 0
 	sm3.x = sm3.x[:0]
 	sm3.A = 0x7380166f
@@ -175,15 +173,16 @@ func (sm3 *SM3) Sum(b []byte) []byte {
 
 	nblocks := update(sm3, data)
 	sm3.x = sm3.x[(nblocks-1)*BlockSize:]
-	binary.BigEndian.PutUint32(sm3.dgst[0:], sm3.A)
-	binary.BigEndian.PutUint32(sm3.dgst[4:], sm3.B)
-	binary.BigEndian.PutUint32(sm3.dgst[8:], sm3.C)
-	binary.BigEndian.PutUint32(sm3.dgst[12:], sm3.D)
-	binary.BigEndian.PutUint32(sm3.dgst[16:], sm3.E)
-	binary.BigEndian.PutUint32(sm3.dgst[20:], sm3.F)
-	binary.BigEndian.PutUint32(sm3.dgst[24:], sm3.G)
-	binary.BigEndian.PutUint32(sm3.dgst[28:], sm3.H)
-	return sm3.dgst
+	dgst := make([]byte, 32)
+	binary.BigEndian.PutUint32(dgst[0:], sm3.A)
+	binary.BigEndian.PutUint32(dgst[4:], sm3.B)
+	binary.BigEndian.PutUint32(dgst[8:], sm3.C)
+	binary.BigEndian.PutUint32(dgst[12:], sm3.D)
+	binary.BigEndian.PutUint32(dgst[16:], sm3.E)
+	binary.BigEndian.PutUint32(dgst[20:], sm3.F)
+	binary.BigEndian.PutUint32(dgst[24:], sm3.G)
+	binary.BigEndian.PutUint32(dgst[28:], sm3.H)
+	return dgst
 }
 
 func (sm3 *SM3) Write(p []byte) (n int, err error) {
