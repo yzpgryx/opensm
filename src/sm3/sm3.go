@@ -3,7 +3,6 @@ package sm3
 import (
 	"encoding/binary"
 	"hash"
-	"strconv"
 )
 
 const BlockSize = 64
@@ -126,23 +125,18 @@ func (sm3 *SM3) BlockSize() int {
 	return BlockSize
 }
 
-func hexstr2uint32(str string) uint32 {
-	value, _ := strconv.ParseUint(str, 16, 32)
-	return uint32(value)
-}
-
 func (sm3 *SM3) Reset() {
 	sm3.dgst = make([]byte, 32)
 	sm3.length = 0
 	sm3.x = sm3.x[:0]
-	sm3.A = hexstr2uint32("7380166f")
-	sm3.B = hexstr2uint32("4914b2b9")
-	sm3.C = hexstr2uint32("172442d7")
-	sm3.D = hexstr2uint32("da8a0600")
-	sm3.E = hexstr2uint32("a96f30bc")
-	sm3.F = hexstr2uint32("163138aa")
-	sm3.G = hexstr2uint32("e38dee4d")
-	sm3.H = hexstr2uint32("b0fb0e4e")
+	sm3.A = 0x7380166f
+	sm3.B = 0x4914b2b9
+	sm3.C = 0x172442d7
+	sm3.D = 0xda8a0600
+	sm3.E = 0xa96f30bc
+	sm3.F = 0x163138aa
+	sm3.G = 0xe38dee4d
+	sm3.H = 0xb0fb0e4e
 }
 
 func (sm3 *SM3) Size() int {
