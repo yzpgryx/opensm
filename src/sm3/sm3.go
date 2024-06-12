@@ -141,29 +141,34 @@ func (sm3 *SM3) Size() int {
 	return Size
 }
 
-func update(sm3 *SM3, p []byte) int {
-	var B [BlockSize / 4]uint32
+func update(sm3 *SM3, p []byte, update bool) (int, []uint32) {
+	var b [BlockSize / 4]uint32
 	var W []uint32
 	var i int
 
+	A, B, C, D, E, F, G, H := sm3.A, sm3.B, sm3.C, sm3.D, sm3.E, sm3.F, sm3.G, sm3.H
 	for i = 0; i < len(p)/BlockSize; i++ {
 		for j := 0; j < BlockSize/4; j++ {
-			B[j] = binary.BigEndian.Uint32(p[i*BlockSize+j*4 : i*BlockSize+(j+1)*4])
+			b[j] = binary.BigEndian.Uint32(p[i*BlockSize+j*4 : i*BlockSize+(j+1)*4])
 		}
 
-		W = Expand(B[:])
-		dgst := CF(sm3.A, sm3.B, sm3.C, sm3.D, sm3.E, sm3.F, sm3.G, sm3.H, W)
-		sm3.A = sm3.A ^ dgst[0]
-		sm3.B = sm3.B ^ dgst[1]
-		sm3.C = sm3.C ^ dgst[2]
-		sm3.D = sm3.D ^ dgst[3]
-		sm3.E = sm3.E ^ dgst[4]
-		sm3.F = sm3.F ^ dgst[5]
-		sm3.G = sm3.G ^ dgst[6]
-		sm3.H = sm3.H ^ dgst[7]
+		W = Expand(b[:])
+		dgst := CF(A, B, C, D, E, F, G, H, W)
+		A = A ^ dgst[0]
+		B = B ^ dgst[1]
+		C = C ^ dgst[2]
+		D = D ^ dgst[3]
+		E = E ^ dgst[4]
+		F = F ^ dgst[5]
+		G = G ^ dgst[6]
+		H = H ^ dgst[7]
 	}
 
-	return i
+	if update {
+		sm3.A, sm3.B, sm3.C, sm3.D, sm3.E, sm3.F, sm3.G, sm3.H = A, B, C, D, E, F, G, H
+	}
+
+	return i, []uint32{A, B, C, D, E, F, G, H}
 }
 
 func (sm3 *SM3) Sum(b []byte) []byte {
@@ -171,24 +176,21 @@ func (sm3 *SM3) Sum(b []byte) []byte {
 	sm3.length += len(b)
 	data := padding(sm3, sm3.x)
 
-	nblocks := update(sm3, data)
+	nblocks, sum := update(sm3, data, false)
 	sm3.x = sm3.x[(nblocks-1)*BlockSize:]
 	dgst := make([]byte, 32)
-	binary.BigEndian.PutUint32(dgst[0:], sm3.A)
-	binary.BigEndian.PutUint32(dgst[4:], sm3.B)
-	binary.BigEndian.PutUint32(dgst[8:], sm3.C)
-	binary.BigEndian.PutUint32(dgst[12:], sm3.D)
-	binary.BigEndian.PutUint32(dgst[16:], sm3.E)
-	binary.BigEndian.PutUint32(dgst[20:], sm3.F)
-	binary.BigEndian.PutUint32(dgst[24:], sm3.G)
-	binary.BigEndian.PutUint32(dgst[28:], sm3.H)
+
+	for i := 0; i < len(sum); i++ {
+		binary.BigEndian.PutUint32(dgst[i*4:], sum[i])
+	}
+
 	return dgst
 }
 
 func (sm3 *SM3) Write(p []byte) (n int, err error) {
 	sm3.x = append(sm3.x, p...)
 	sm3.length += len(p)
-	nblocks := update(sm3, p)
+	nblocks, _ := update(sm3, p, true)
 	sm3.x = sm3.x[nblocks*BlockSize:]
 	return len(p), nil
 }

@@ -84,4 +84,15 @@ func TestNew(t *testing.T) {
 	if bytes.Equal(hash2, hash) {
 		t.Logf("%d bytes data mix test success\n", len(data2))
 	}
+
+	sm3.Reset()
+	for i := 0; i < 32; i++ {
+		sm3.Write(data2[i : i+1])
+	}
+	sm3.Sum(nil)
+	sm3.Write(data2[32:])
+	hash = sm3.Sum(nil)
+	if bytes.Equal(hash2, hash) {
+		t.Logf("%d bytes data mix continuously test success\n", len(data2))
+	}
 }
