@@ -34,6 +34,10 @@ func TestNew(t *testing.T) {
 		0x6F, 0xDB, 0x70, 0xE5, 0x38, 0x7E, 0x57, 0x65,
 		0x29, 0x3D, 0xCB, 0xA3, 0x9C, 0x0C, 0x57, 0x32,
 	}
+
+	ret1 := append(data1, hash1...)
+	ret2 := append(data2, hash2...)
+
 	sm3 := sm3.New()
 	if sm3 == nil {
 		t.Errorf("new sm3 failed")
@@ -43,28 +47,29 @@ func TestNew(t *testing.T) {
 
 	sm3.Write(data1)
 	hash := sm3.Sum(nil)
-
 	if bytes.Equal(hash1, hash) {
-		t.Logf("%d bytes data write & sum test success\n", len(data1))
+		t.Logf("%d bytes data sum(nil) test success\n", len(data1))
 	}
 
 	sm3.Reset()
 	sm3.Write(data2)
 	hash = sm3.Sum(nil)
 	if bytes.Equal(hash2, hash) {
-		t.Logf("%d bytes data write & sum test success\n", len(data2))
+		t.Logf("%d bytes data sum(nil)test success\n", len(data2))
 	}
 
 	sm3.Reset()
+	sm3.Write(data1)
 	hash = sm3.Sum(data1)
-	if bytes.Equal(hash1, hash) {
-		t.Logf("%d bytes data sum test success\n", len(data1))
+	if bytes.Equal(ret1, hash) {
+		t.Logf("%d bytes data sum(data) test success\n", len(data1))
 	}
 
 	sm3.Reset()
+	sm3.Write(data2)
 	hash = sm3.Sum(data2)
-	if bytes.Equal(hash2, hash) {
-		t.Logf("%d bytes data sum test success\n", len(data2))
+	if bytes.Equal(ret2, hash) {
+		t.Logf("%d bytes data sum(data) test success\n", len(data2))
 	}
 
 	sm3.Reset()
@@ -80,8 +85,9 @@ func TestNew(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		sm3.Write(data2[i : i+1])
 	}
-	hash = sm3.Sum(data2[30:])
-	if bytes.Equal(hash2, hash) {
+	sm3.Write(data2[30:])
+	hash = sm3.Sum(data2)
+	if bytes.Equal(ret2, hash) {
 		t.Logf("%d bytes data mix test success\n", len(data2))
 	}
 

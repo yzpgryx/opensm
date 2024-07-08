@@ -172,8 +172,6 @@ func update(sm3 *SM3, p []byte, update bool) (int, []uint32) {
 }
 
 func (sm3 *SM3) Sum(b []byte) []byte {
-	sm3.x = append(sm3.x, b...)
-	sm3.length += len(b)
 	data := padding(sm3, sm3.x)
 
 	nblocks, sum := update(sm3, data, false)
@@ -184,7 +182,8 @@ func (sm3 *SM3) Sum(b []byte) []byte {
 		binary.BigEndian.PutUint32(dgst[i*4:], sum[i])
 	}
 
-	return dgst
+	b = append(b, dgst...)
+	return b
 }
 
 func (sm3 *SM3) Write(p []byte) (n int, err error) {
