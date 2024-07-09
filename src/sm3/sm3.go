@@ -3,6 +3,7 @@ package sm3
 import (
 	"encoding/binary"
 	"hash"
+	"opensm/src/util"
 )
 
 const BlockSize = 64
@@ -70,17 +71,12 @@ func GG(x, y, z uint32, j uint) uint32 {
 	return 0
 }
 
-func rotateLeft(x uint32, k uint) uint32 {
-	k %= 32
-	return (x << k) | (x >> (32 - k))
-}
-
 func xorShiftP0(x uint32) uint32 {
-	return x ^ rotateLeft(x, 9) ^ rotateLeft(x, 17)
+	return x ^ util.RotateLeft(x, 9) ^ util.RotateLeft(x, 17)
 }
 
 func xorShiftP1(x uint32) uint32 {
-	return x ^ rotateLeft(x, 15) ^ rotateLeft(x, 23)
+	return x ^ util.RotateLeft(x, 15) ^ util.RotateLeft(x, 23)
 }
 
 func Expand(b []uint32) []uint32 {
@@ -88,7 +84,7 @@ func Expand(b []uint32) []uint32 {
 	copy(w, b)
 
 	for j := 16; j <= 67; j++ {
-		w[j] = xorShiftP1(w[j-16]^w[j-9]^(rotateLeft(w[j-3], 15))) ^ rotateLeft(w[j-13], 7) ^ w[j-6]
+		w[j] = xorShiftP1(w[j-16]^w[j-9]^(util.RotateLeft(w[j-3], 15))) ^ util.RotateLeft(w[j-13], 7) ^ w[j-6]
 	}
 
 	for j := 0; j <= 63; j++ {
@@ -103,16 +99,16 @@ func CF(A, B, C, D, E, F, G, H uint32, W []uint32) []uint32 {
 	var j uint
 
 	for j = 0; j < BlockSize; j++ {
-		SS1 = rotateLeft((rotateLeft(A, 12) + E + rotateLeft(T(j), j)), 7)
-		SS2 = SS1 ^ (rotateLeft(A, 12))
+		SS1 = util.RotateLeft((util.RotateLeft(A, 12) + E + util.RotateLeft(T(j), j)), 7)
+		SS2 = SS1 ^ (util.RotateLeft(A, 12))
 		TT1 = FF(A, B, C, j) + D + SS2 + W[68+j]
 		TT2 = GG(E, F, G, j) + H + SS1 + W[j]
 		D = C
-		C = rotateLeft(B, 9)
+		C = util.RotateLeft(B, 9)
 		B = A
 		A = TT1
 		H = G
-		G = rotateLeft(F, 19)
+		G = util.RotateLeft(F, 19)
 		F = E
 		E = xorShiftP0(TT2)
 	}
