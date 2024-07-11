@@ -9,6 +9,7 @@ import (
 type sm4Cipher struct {
 	key []byte
 	iv  []byte
+	rk  []uint32
 }
 
 const BlockSize = 16
@@ -114,6 +115,8 @@ func decryptBlock(x0, x1, x2, x3 uint32, rk []uint32) (uint32, uint32, uint32, u
 func NewCipher(key []byte) (cipher.Block, error) {
 	c := sm4Cipher{
 		key: key,
+		rk: MK(binary.BigEndian.Uint32(key[0:4]), binary.BigEndian.Uint32(key[4:8]),
+			binary.BigEndian.Uint32(key[8:12]), binary.BigEndian.Uint32(key[12:16])),
 	}
 
 	return &c, nil
@@ -124,16 +127,13 @@ func (c *sm4Cipher) BlockSize() int {
 }
 
 func (c *sm4Cipher) Encrypt(dst, src []byte) {
-	rk := MK(binary.BigEndian.Uint32(c.key[0:4]), binary.BigEndian.Uint32(c.key[4:8]),
-		binary.BigEndian.Uint32(c.key[8:12]), binary.BigEndian.Uint32(c.key[12:16]))
-
 	for i := 0; i*BlockSize < len(src); i++ {
 		x0 := binary.BigEndian.Uint32(src[i*4 : i*4+4])
 		x1 := binary.BigEndian.Uint32(src[i*4+4 : i*4+8])
 		x2 := binary.BigEndian.Uint32(src[i*4+8 : i*4+12])
 		x3 := binary.BigEndian.Uint32(src[i*4+12 : i*4+16])
 
-		c0, c1, c2, c3 := encryptBlock(x0, x1, x2, x3, rk)
+		c0, c1, c2, c3 := encryptBlock(x0, x1, x2, x3, c.rk)
 
 		binary.BigEndian.PutUint32(dst[i*4:i*4+4], c0)
 		binary.BigEndian.PutUint32(dst[i*4+4:i*4+8], c1)
@@ -143,16 +143,13 @@ func (c *sm4Cipher) Encrypt(dst, src []byte) {
 }
 
 func (c *sm4Cipher) Decrypt(dst, src []byte) {
-	rk := MK(binary.BigEndian.Uint32(c.key[0:4]), binary.BigEndian.Uint32(c.key[4:8]),
-		binary.BigEndian.Uint32(c.key[8:12]), binary.BigEndian.Uint32(c.key[12:16]))
-
 	for i := 0; i*BlockSize < len(src); i++ {
 		x0 := binary.BigEndian.Uint32(src[i*4 : i*4+4])
 		x1 := binary.BigEndian.Uint32(src[i*4+4 : i*4+8])
 		x2 := binary.BigEndian.Uint32(src[i*4+8 : i*4+12])
 		x3 := binary.BigEndian.Uint32(src[i*4+12 : i*4+16])
 
-		c0, c1, c2, c3 := decryptBlock(x0, x1, x2, x3, rk)
+		c0, c1, c2, c3 := decryptBlock(x0, x1, x2, x3, c.rk)
 
 		binary.BigEndian.PutUint32(dst[i*4:i*4+4], c0)
 		binary.BigEndian.PutUint32(dst[i*4+4:i*4+8], c1)

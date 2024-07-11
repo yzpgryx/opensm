@@ -1,9 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"opensm/src/sm4"
 	"testing"
-	"bytes"
+	"time"
 )
 
 func TestBlockSize(t *testing.T) {
@@ -37,24 +38,28 @@ func TestBlockSize(t *testing.T) {
 
 	p := plain
 	round := 1000000
+	start := time.Now()
 	for i := 0; i < round; i++ {
 		sm4.Encrypt(cipher, p)
 		p = cipher
 	}
+	elapsed := time.Since(start)
 
 	if bytes.Equal(cipher, expected2) {
-		t.Logf("Encrypt %d round success!", round)
+		t.Logf("Encrypt %d round success : %s!", round, elapsed)
 	} else {
 		t.Logf("Encrypt %d round failed!", round)
 	}
 
 	p = cipher
+	start = time.Now()
 	for i := 0; i < round; i++ {
 		sm4.Decrypt(plain2, p)
 		p = plain2
 	}
+	elapsed = time.Since(start)
 	if bytes.Equal(plain, plain2) {
-		t.Logf("Encrypt %d round success!", round)
+		t.Logf("Decrypt %d round success : %s!", round, elapsed)
 	} else {
 		t.Logf("Decrypt %d round failed!", round)
 	}
